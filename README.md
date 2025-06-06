@@ -5,11 +5,13 @@ A simple Node.js app that fetches bookmarks from your Raindrop.io account.
 ## Setup
 
 1. Install dependencies:
+
    ```bash
    npm install
    ```
 
 2. Create a `.env` file with your Raindrop.io credentials:
+
    ```
    RAINDROP_CLIENT_ID=your_client_id
    RAINDROP_CLIENT_SECRET=your_client_secret
@@ -21,6 +23,7 @@ A simple Node.js app that fetches bookmarks from your Raindrop.io account.
 ## Usage
 
 Fetch all your bookmarks:
+
 ```bash
 npm run fetch
 ```
@@ -29,5 +32,3 @@ npm run fetch
 
 - `npm run build` - Build TypeScript
 - `npm test` - Run tests
-- `npm run lint` - Lint code
-- `npm run typecheck` - Type check
