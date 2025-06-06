@@ -5,3 +5,7 @@ tokens.json
 *.log
 .DS_Store
 .claude/
+
+# Database files
+*.duckdb
+*.duckdb.wal
