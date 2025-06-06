@@ -28,6 +28,10 @@ Fetch all your bookmarks:
 npm run fetch
 ```
 
+Bookmarks are automatically saved to `bookmarks.db` in the project directory. The database will be created on first run and migrated automatically if you're upgrading from an older version.
+
+The app performs incremental fetching - on subsequent runs, it only fetches bookmarks that have been updated since the last sync, making it much faster.
+
 ## Development
 
 - `npm run build` - Build TypeScript
