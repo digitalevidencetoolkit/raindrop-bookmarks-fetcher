@@ -3,12 +3,14 @@ import {
   saveBookmark,
   getBookmark,
   hasBookmarkUrl,
+  hasBookmarkId,
   getAllBookmarks,
 } from "../storage/storage";
+import { RaindropLink } from "../types/raindrop";
 import * as fs from "fs";
 import * as path from "path";
 
-const TEST_DB_PATH = path.join(__dirname, "test-bookmarks.duckdb");
+const TEST_DB_PATH = path.join(__dirname, "test-bookmarks.db");
 
 describe("Bookmark Storage Functions", () => {
   beforeEach(async () => {
@@ -30,61 +32,174 @@ describe("Bookmark Storage Functions", () => {
   });
 
   test("should store a bookmark", async () => {
-    const bookmark = {
-      url: "https://example.com",
+    const raindropLink: RaindropLink = {
+      _id: 123,
       title: "Example Site",
+      link: "https://example.com",
+      excerpt: "Test excerpt",
+      note: "Test note",
+      type: "link",
+      user: { $id: 1 },
+      cover: "",
+      media: [],
       tags: ["example", "test"],
-      metadata: { description: "A test site" },
+      important: false,
+      removed: false,
+      created: "2023-01-01T00:00:00Z",
+      lastUpdate: "2023-01-01T00:00:00Z",
+      domain: "example.com",
+      creatorRef: "test",
+      sort: 0,
+      collectionId: 1,
+    };
+
+    const bookmark = {
+      raindropLink,
     };
 
     await saveBookmark(bookmark, TEST_DB_PATH);
     const stored = await getBookmark("https://example.com", TEST_DB_PATH);
 
     expect(stored).toBeDefined();
-    expect(stored!.url).toBe(bookmark.url);
-    expect(stored!.title).toBe(bookmark.title);
-    expect(stored!.tags).toEqual(bookmark.tags);
+    expect(stored!.url).toBe(raindropLink.link);
+    expect(stored!.title).toBe(raindropLink.title);
+    expect(stored!.raindrop_id).toBe(raindropLink._id);
+    expect(stored!.raindrop_metadata).toEqual(raindropLink);
   });
 
-  test("should prevent duplicate URLs", async () => {
-    const bookmark1 = {
-      url: "https://example.com",
+  test("should prevent duplicate IDs", async () => {
+    const raindropLink1: RaindropLink = {
+      _id: 123,
       title: "Example 1",
+      link: "https://example1.com",
+      excerpt: "",
+      note: "",
+      type: "link",
+      user: { $id: 1 },
+      cover: "",
+      media: [],
       tags: ["test"],
+      important: false,
+      removed: false,
+      created: "2023-01-01T00:00:00Z",
+      lastUpdate: "2023-01-01T00:00:00Z",
+      domain: "example1.com",
+      creatorRef: "test",
+      sort: 0,
+      collectionId: 1,
     };
-    const bookmark2 = {
-      url: "https://example.com",
+    const raindropLink2: RaindropLink = {
+      _id: 123, // Same ID
       title: "Example 2",
+      link: "https://example2.com",
+      excerpt: "",
+      note: "",
+      type: "link",
+      user: { $id: 1 },
+      cover: "",
+      media: [],
       tags: ["duplicate"],
+      important: false,
+      removed: false,
+      created: "2023-01-01T00:00:00Z",
+      lastUpdate: "2023-01-01T00:00:00Z",
+      domain: "example2.com",
+      creatorRef: "test",
+      sort: 0,
+      collectionId: 1,
     };
+
+    const bookmark1 = { raindropLink: raindropLink1 };
+    const bookmark2 = { raindropLink: raindropLink2 };
 
     await saveBookmark(bookmark1, TEST_DB_PATH);
     await saveBookmark(bookmark2, TEST_DB_PATH);
 
-    const stored = await getBookmark("https://example.com", TEST_DB_PATH);
+    const stored = await getBookmark("https://example1.com", TEST_DB_PATH);
     expect(stored!.title).toBe("Example 1"); // First one wins
+    expect(await hasBookmarkId(123, TEST_DB_PATH)).toBe(true);
   });
 
   test("should check if URL already exists", async () => {
-    const bookmark = {
-      url: "https://example.com",
+    const raindropLink: RaindropLink = {
+      _id: 456,
       title: "Example",
+      link: "https://example.com",
+      excerpt: "",
+      note: "",
+      type: "link",
+      user: { $id: 1 },
+      cover: "",
+      media: [],
       tags: ["test"],
+      important: false,
+      removed: false,
+      created: "2023-01-01T00:00:00Z",
+      lastUpdate: "2023-01-01T00:00:00Z",
+      domain: "example.com",
+      creatorRef: "test",
+      sort: 0,
+      collectionId: 1,
     };
+
+    const bookmark = { raindropLink };
 
     expect(await hasBookmarkUrl("https://example.com", TEST_DB_PATH)).toBe(
       false
     );
+    expect(await hasBookmarkId(456, TEST_DB_PATH)).toBe(false);
     await saveBookmark(bookmark, TEST_DB_PATH);
     expect(await hasBookmarkUrl("https://example.com", TEST_DB_PATH)).toBe(
       true
     );
+    expect(await hasBookmarkId(456, TEST_DB_PATH)).toBe(true);
   });
 
   test("should get all bookmarks", async () => {
+    const raindropLink1: RaindropLink = {
+      _id: 789,
+      title: "Example 1",
+      link: "https://example1.com",
+      excerpt: "",
+      note: "",
+      type: "link",
+      user: { $id: 1 },
+      cover: "",
+      media: [],
+      tags: ["test"],
+      important: false,
+      removed: false,
+      created: "2023-01-01T00:00:00Z",
+      lastUpdate: "2023-01-01T00:00:00Z",
+      domain: "example1.com",
+      creatorRef: "test",
+      sort: 0,
+      collectionId: 1,
+    };
+    const raindropLink2: RaindropLink = {
+      _id: 790,
+      title: "Example 2",
+      link: "https://example2.com",
+      excerpt: "",
+      note: "",
+      type: "link",
+      user: { $id: 1 },
+      cover: "",
+      media: [],
+      tags: ["test"],
+      important: false,
+      removed: false,
+      created: "2023-01-01T00:00:00Z",
+      lastUpdate: "2023-01-01T00:00:00Z",
+      domain: "example2.com",
+      creatorRef: "test",
+      sort: 0,
+      collectionId: 1,
+    };
+
     const bookmarks = [
-      { url: "https://example1.com", title: "Example 1", tags: ["test"] },
-      { url: "https://example2.com", title: "Example 2", tags: ["test"] },
+      { raindropLink: raindropLink1 },
+      { raindropLink: raindropLink2 },
     ];
 
     for (const bookmark of bookmarks) {
@@ -95,5 +210,7 @@ describe("Bookmark Storage Functions", () => {
     expect(all).toHaveLength(2);
     expect(all.map((b) => b.url)).toContain("https://example1.com");
     expect(all.map((b) => b.url)).toContain("https://example2.com");
+    expect(all.map((b) => b.raindrop_id)).toContain(789);
+    expect(all.map((b) => b.raindrop_id)).toContain(790);
   });
 });

@@ -7,5 +7,4 @@ tokens.json
 .claude/
 
 # Database files
-*.duckdb
-*.duckdb.wal
+*.db
