@@ -38,7 +38,8 @@ async function makeAuthenticatedRequest<T>(
 
 export async function getAllLinks(
   credentials: RaindropCredentials,
-  tokens: AuthTokens
+  tokens: AuthTokens,
+  sinceDate?: string
 ): Promise<{ links: RaindropLink[]; updatedTokens?: AuthTokens }> {
   const allLinks: RaindropLink[] = [];
   let page = 0;
@@ -47,20 +48,38 @@ export async function getAllLinks(
   let finalUpdatedTokens: AuthTokens | undefined;
 
   while (hasMore && page < 100) {
+    // Sort by created date to get most recently created items first
+    // This helps with incremental fetching
+    let url = `/raindrops/0?page=${page}&perpage=50&sort=-created`;
+    
     const result = await makeAuthenticatedRequest<
       RaindropApiResponse<RaindropLink>
-    >(
-      credentials,
-      currentTokens,
-      `/raindrops/0?page=${page}&perpage=50&sort=-created`
-    );
+    >(credentials, currentTokens, url);
 
     if (result.updatedTokens) {
       currentTokens = result.updatedTokens;
       finalUpdatedTokens = result.updatedTokens;
     }
 
-    allLinks.push(...result.data.items);
+    const newLinks = result.data.items;
+    
+    // If we have a sinceDate, filter out links that haven't been updated since then
+    if (sinceDate) {
+      const filteredLinks = newLinks.filter(link => 
+        new Date(link.lastUpdate) > new Date(sinceDate)
+      );
+      
+      // If we got fewer filtered links than requested, we've reached the cutoff
+      if (filteredLinks.length < newLinks.length) {
+        allLinks.push(...filteredLinks);
+        break;
+      }
+      
+      allLinks.push(...filteredLinks);
+    } else {
+      allLinks.push(...newLinks);
+    }
+
     hasMore = (page + 1) * 50 < result.data.count;
     page++;
   }

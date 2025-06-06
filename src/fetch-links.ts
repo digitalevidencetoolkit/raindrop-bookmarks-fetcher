@@ -5,6 +5,7 @@ import {
   saveTokens,
   initializeBookmarkDb,
   saveBookmarksBatch,
+  getMostRecentUpdate,
 } from "./storage/storage";
 import { RaindropCredentials } from "./types/auth";
 
@@ -29,19 +30,31 @@ async function fetchLinks() {
       process.exit(1);
     }
 
-    console.log("🔍 Fetching all links from Raindrop.io...");
-
     // Initialize database
     await initializeBookmarkDb();
 
-    const result = await getAllLinks(credentials, tokens);
+    // Check for incremental fetch
+    const lastUpdate = await getMostRecentUpdate();
+    
+    if (lastUpdate) {
+      console.log(`🔍 Fetching links updated since ${lastUpdate}...`);
+    } else {
+      console.log("🔍 Fetching all links from Raindrop.io (initial sync)...");
+    }
+
+    const result = await getAllLinks(credentials, tokens, lastUpdate || undefined);
 
     if (result.updatedTokens) {
       console.log("🔄 Refreshed auth tokens");
       await saveTokens(result.updatedTokens);
     }
 
-    console.log(`✅ Successfully fetched ${result.links.length} links`);
+    if (lastUpdate && result.links.length === 0) {
+      console.log("✅ No new or updated links found");
+      return result;
+    }
+    
+    console.log(`✅ Successfully fetched ${result.links.length} ${lastUpdate ? 'updated' : ''} links`);
 
     // Save bookmarks to database
     console.log("💾 Saving bookmarks to database...");

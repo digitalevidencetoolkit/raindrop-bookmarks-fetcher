@@ -5,6 +5,7 @@ import {
   hasBookmarkUrl,
   hasBookmarkId,
   getAllBookmarks,
+  getMostRecentUpdate,
 } from "../storage/storage";
 import { RaindropLink } from "../types/raindrop";
 import * as fs from "fs";
@@ -212,5 +213,59 @@ describe("Bookmark Storage Functions", () => {
     expect(all.map((b) => b.url)).toContain("https://example2.com");
     expect(all.map((b) => b.raindrop_id)).toContain(789);
     expect(all.map((b) => b.raindrop_id)).toContain(790);
+  });
+
+  test("should get most recent update date", async () => {
+    // First check empty database
+    expect(await getMostRecentUpdate(TEST_DB_PATH)).toBeNull();
+
+    // Add bookmarks with different lastUpdate dates
+    const raindropLink1: RaindropLink = {
+      _id: 1001,
+      title: "Older Link",
+      link: "https://older.com",
+      excerpt: "",
+      note: "",
+      type: "link",
+      user: { $id: 1 },
+      cover: "",
+      media: [],
+      tags: ["test"],
+      important: false,
+      removed: false,
+      created: "2023-01-01T00:00:00Z",
+      lastUpdate: "2023-01-01T10:00:00Z", // Older
+      domain: "older.com",
+      creatorRef: "test",
+      sort: 0,
+      collectionId: 1,
+    };
+
+    const raindropLink2: RaindropLink = {
+      _id: 1002,
+      title: "Newer Link",
+      link: "https://newer.com",
+      excerpt: "",
+      note: "",
+      type: "link",
+      user: { $id: 1 },
+      cover: "",
+      media: [],
+      tags: ["test"],
+      important: false,
+      removed: false,
+      created: "2023-01-01T00:00:00Z",
+      lastUpdate: "2023-01-01T20:00:00Z", // Newer
+      domain: "newer.com",
+      creatorRef: "test",
+      sort: 0,
+      collectionId: 1,
+    };
+
+    await saveBookmark({ raindropLink: raindropLink1 }, TEST_DB_PATH);
+    await saveBookmark({ raindropLink: raindropLink2 }, TEST_DB_PATH);
+
+    const mostRecent = await getMostRecentUpdate(TEST_DB_PATH);
+    expect(mostRecent).toBe("2023-01-01T20:00:00Z");
   });
 });

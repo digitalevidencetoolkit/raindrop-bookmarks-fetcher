@@ -339,6 +339,26 @@ export async function hasBookmarkId(
   }
 }
 
+export async function getMostRecentUpdate(
+  dbPath: string = defaultBookmarkDbPath
+): Promise<string | null> {
+  const db = await openDatabase(dbPath);
+
+  try {
+    const row = await runQuerySingle<{ lastUpdate: string }>(
+      db,
+      `SELECT JSON_EXTRACT(raindrop_metadata, '$.lastUpdate') as lastUpdate
+       FROM bookmarks
+       ORDER BY JSON_EXTRACT(raindrop_metadata, '$.lastUpdate') DESC
+       LIMIT 1`
+    );
+
+    return row?.lastUpdate || null;
+  } finally {
+    await closeDatabase(db);
+  }
+}
+
 export async function getAllBookmarks(
   dbPath: string = defaultBookmarkDbPath
 ): Promise<StoredBookmark[]> {
