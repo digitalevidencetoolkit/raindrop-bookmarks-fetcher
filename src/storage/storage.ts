@@ -453,214 +453,134 @@ export interface StoredBookmark {
 //     await closeDatabase(db);
 //   }
 // }
+
+// JSON File Storage Implementation (Issue #9)
+const defaultDataDir = join(process.cwd(), "data");
+
+// Ensure data directory exists
+export async function ensureDataDirectory(
+  dataDir: string = defaultDataDir
 ): Promise<void> {
-  const db = await openDatabase(dbPath);
-
   try {
-    const raindropMetadataJson = JSON.stringify(bookmark.raindropLink);
-
-    await execQuery(
-      db,
-      `INSERT OR IGNORE INTO bookmarks (raindrop_id, url, title, raindrop_metadata)
-       VALUES (?, ?, ?, ?)`,
-      [
-        bookmark.raindropLink._id,
-        bookmark.raindropLink.link,
-        bookmark.raindropLink.title,
-        raindropMetadataJson,
-      ]
+    await fs.mkdir(dataDir, { recursive: true });
+  } catch (error) {
+    throw new Error(
+      `Failed to create data directory: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
-  } finally {
-    await closeDatabase(db);
   }
 }
 
-export async function getBookmark(
-  url: string,
-  dbPath: string = defaultBookmarkDbPath
-): Promise<StoredBookmark | null> {
-  const db = await openDatabase(dbPath);
+// Generate filename for bookmarks JSON with timestamp
+function generateBookmarksFilename(): string {
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/[:.]/g, "-");
+  return `bookmarks-${timestamp}.json`;
+}
+
+// Save bookmarks to timestamped JSON file
+export async function saveBookmarksToJson(
+  bookmarks: { raindropLink: RaindropLink }[],
+  dataDir: string = defaultDataDir
+): Promise<{ filename: string; count: number }> {
+  await ensureDataDirectory(dataDir);
+
+  const filename = generateBookmarksFilename();
+  const filepath = join(dataDir, filename);
+
+  const data = {
+    fetchedAt: new Date().toISOString(),
+    count: bookmarks.length,
+    bookmarks: bookmarks.map((b) => b.raindropLink),
+  };
 
   try {
-    const row = await runQuerySingle<{
-      raindrop_id: number;
-      url: string;
-      title: string;
-      raindrop_metadata: string;
-    }>(
-      db,
-      `SELECT raindrop_id, url, title, raindrop_metadata
-       FROM bookmarks
-       WHERE url = ?`,
-      [url]
+    await fs.writeFile(filepath, JSON.stringify(data, null, 2));
+    // console.log(`💾 Saved ${bookmarks.length} bookmarks to ${filename}`);
+    return { filename, count: bookmarks.length };
+  } catch (error) {
+    throw new Error(
+      `Failed to save bookmarks to JSON: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
     );
-
-    if (!row) return null;
-
-    return {
-      raindrop_id: row.raindrop_id,
-      url: row.url,
-      title: row.title,
-      raindrop_metadata: JSON.parse(row.raindrop_metadata),
-    };
-  } finally {
-    await closeDatabase(db);
   }
 }
 
-export async function hasBookmarkUrl(
-  url: string,
-  dbPath: string = defaultBookmarkDbPath
-): Promise<boolean> {
-  const db = await openDatabase(dbPath);
-
-  try {
-    const row = await runQuerySingle<{ count: number }>(
-      db,
-      `SELECT COUNT(*) as count
-       FROM bookmarks
-       WHERE url = ?`,
-      [url]
-    );
-
-    return (row?.count || 0) > 0;
-  } finally {
-    await closeDatabase(db);
-  }
-}
-
-export async function hasBookmarkId(
-  raindropId: number,
-  dbPath: string = defaultBookmarkDbPath
-): Promise<boolean> {
-  const db = await openDatabase(dbPath);
-
-  try {
-    const row = await runQuerySingle<{ count: number }>(
-      db,
-      `SELECT COUNT(*) as count
-       FROM bookmarks
-       WHERE raindrop_id = ?`,
-      [raindropId]
-    );
-
-    return (row?.count || 0) > 0;
-  } finally {
-    await closeDatabase(db);
-  }
-}
-
-export async function getMostRecentUpdate(
-  dbPath: string = defaultBookmarkDbPath
+// Get most recent update from existing JSON files
+export async function getMostRecentUpdateFromJson(
+  dataDir: string = defaultDataDir
 ): Promise<string | null> {
-  const db = await openDatabase(dbPath);
-
   try {
-    const row = await runQuerySingle<{ lastUpdate: string }>(
-      db,
-      `SELECT JSON_EXTRACT(raindrop_metadata, '$.lastUpdate') as lastUpdate
-       FROM bookmarks
-       ORDER BY JSON_EXTRACT(raindrop_metadata, '$.lastUpdate') DESC
-       LIMIT 1`
-    );
+    await ensureDataDirectory(dataDir);
 
-    return row?.lastUpdate || null;
-  } finally {
-    await closeDatabase(db);
-  }
-}
+    const files = await fs.readdir(dataDir);
+    const bookmarkFiles = files
+      .filter((file) => file.startsWith("bookmarks-") && file.endsWith(".json"))
+      .sort()
+      .reverse(); // Most recent first
 
-export async function getAllBookmarks(
-  dbPath: string = defaultBookmarkDbPath
-): Promise<StoredBookmark[]> {
-  const db = await openDatabase(dbPath);
-
-  try {
-    const rows = await runQuery<{
-      raindrop_id: number;
-      url: string;
-      title: string;
-      raindrop_metadata: string;
-    }>(
-      db,
-      `SELECT raindrop_id, url, title, raindrop_metadata
-       FROM bookmarks
-       ORDER BY raindrop_id DESC`
-    );
-
-    return rows.map((row) => ({
-      raindrop_id: row.raindrop_id,
-      url: row.url,
-      title: row.title,
-      raindrop_metadata: JSON.parse(row.raindrop_metadata),
-    }));
-  } finally {
-    await closeDatabase(db);
-  }
-}
-
-export async function saveBookmarksBatch(
-  bookmarks: {
-    raindropLink: RaindropLink;
-  }[],
-  dbPath: string = defaultBookmarkDbPath
-): Promise<{ saved: number; skipped: number }> {
-  const db = await openDatabase(dbPath);
-
-  try {
-    let saved = 0;
-    let skipped = 0;
-
-    // Use transactions for better performance
-    await execQuery(db, "BEGIN TRANSACTION");
-
-    try {
-      for (const bookmark of bookmarks) {
-        try {
-          // Check if bookmark already exists
-          const existsRow = await runQuerySingle<{ count: number }>(
-            db,
-            `SELECT COUNT(*) as count FROM bookmarks WHERE raindrop_id = ?`,
-            [bookmark.raindropLink._id]
-          );
-
-          if ((existsRow?.count || 0) > 0) {
-            skipped++;
-            continue;
-          }
-
-          // Insert new bookmark
-          const raindropMetadataJson = JSON.stringify(bookmark.raindropLink);
-
-          await execQuery(
-            db,
-            `INSERT INTO bookmarks (raindrop_id, url, title, raindrop_metadata)
-             VALUES (?, ?, ?, ?)`,
-            [
-              bookmark.raindropLink._id,
-              bookmark.raindropLink.link,
-              bookmark.raindropLink.title,
-              raindropMetadataJson,
-            ]
-          );
-          saved++;
-        } catch (error) {
-          console.error(
-            `Error saving bookmark ${bookmark.raindropLink.link}:`,
-            error
-          );
-          // Continue with next bookmark
-        }
-      }
-
-      await execQuery(db, "COMMIT");
-    } catch (error) {
-      await execQuery(db, "ROLLBACK");
-      throw error;
+    if (bookmarkFiles.length === 0) {
+      return null;
     }
 
-    return { saved, skipped };
-  } finally {
-    await closeDatabase(db);
+    // Read the most recent file to get the latest lastUpdate
+    const mostRecentFile = join(dataDir, bookmarkFiles[0]);
+    const content = await fs.readFile(mostRecentFile, "utf-8");
+    const data = JSON.parse(content);
+
+    if (data.bookmarks && data.bookmarks.length > 0) {
+      // Find the most recent lastUpdate among all bookmarks
+      const lastUpdates = data.bookmarks
+        .map((bookmark: RaindropLink) => bookmark.lastUpdate)
+        .filter((date: string) => date)
+        .sort()
+        .reverse();
+
+      return lastUpdates.length > 0 ? lastUpdates[0] : null;
+    }
+
+    return null;
+  } catch (error) {
+    console.warn(`Warning: Could not read existing bookmark files: ${error}`);
+    return null;
+  }
+}
+
+// List all bookmark JSON files
+export async function listBookmarkFiles(
+  dataDir: string = defaultDataDir
+): Promise<string[]> {
+  try {
+    await ensureDataDirectory(dataDir);
+
+    const files = await fs.readdir(dataDir);
+    return files
+      .filter((file) => file.startsWith("bookmarks-") && file.endsWith(".json"))
+      .sort()
+      .reverse(); // Most recent first
+  } catch (error) {
+    return [];
+  }
+}
+
+// Load bookmarks from a specific JSON file
+export async function loadBookmarksFromJson(
+  filename: string,
+  dataDir: string = defaultDataDir
+): Promise<RaindropLink[]> {
+  const filepath = join(dataDir, filename);
+
+  try {
+    const content = await fs.readFile(filepath, "utf-8");
+    const data = JSON.parse(content);
+    return data.bookmarks || [];
+  } catch (error) {
+    throw new Error(
+      `Failed to load bookmarks from ${filename}: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
   }
 }
