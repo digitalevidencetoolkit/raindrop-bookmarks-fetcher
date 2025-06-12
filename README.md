@@ -1,13 +1,8 @@
-# Raindrop Fetcher
+# Raindrop Bookmarks Fetcher
 
-A Node.js application that fetches and stores bookmarks from your Raindrop.io account locally in a SQLite database.
+A Node.js application that fetches bookmarks from your Raindrop.io account and stores them as timestamped JSON files, designed for automated GitHub Actions workflows.
 
-## Prerequisites
-
-- Have working install of both Node.js (v22 or higher) and npm
-- Have a Raindrop.io account, as well as [a Raindrop app](https://app.raindrop.io/settings/integrations) (with Client ID and Client secret)
-
-## Quick Start
+## 🚀 Quick Start (Local Development)
 
 ### 1. Install Dependencies
 
@@ -43,66 +38,59 @@ This starts a local server, opens the auth URL, and automatically saves your tok
 npm run fetch
 ```
 
-## Sample Output
+## 🤖 Automated GitHub Actions Setup
 
-### First Run
+This project includes a GitHub Actions workflow that automatically fetches bookmarks every 6 hours and commits them to a separate `bookmarks-data` branch.
 
-```
-🔄 Starting bookmark fetch...
-📥 Fetched 150 bookmarks from Raindrop.io
-💾 Saved 150 new bookmarks to database
-✅ Sync completed successfully
-```
+### Required GitHub Secrets
 
-### Subsequent Runs (Incremental Sync)
+To enable automated fetching, you must configure these secrets in your GitHub repository:
 
-```
-🔄 Starting incremental bookmark fetch...
-📥 Fetched 5 new/updated bookmarks since last sync
-💾 Saved 5 bookmarks to database
-✅ Sync completed successfully
-```
+1. **Go to your repository** → Settings → Secrets and variables → Actions
+2. **Add the following Repository Secrets:**
 
-### Database Migration (When Upgrading)
+| Secret Name              | Description                        | How to Get It                                                                       |
+| ------------------------ | ---------------------------------- | ----------------------------------------------------------------------------------- |
+| `RAINDROP_CLIENT_ID`     | Your Raindrop.io app client ID     | From [Raindrop.io integrations page](https://app.raindrop.io/settings/integrations) |
+| `RAINDROP_CLIENT_SECRET` | Your Raindrop.io app client secret | From [Raindrop.io integrations page](https://app.raindrop.io/settings/integrations) |
+| `RAINDROP_ACCESS_TOKEN`  | OAuth access token                 | Run `npm run auth` locally, then copy from `tokens.json`                            |
+| `RAINDROP_REFRESH_TOKEN` | OAuth refresh token                | Run `npm run auth` locally, then copy from `tokens.json`                            |
+| `RAINDROP_EXPIRES_AT`    | Token expiration timestamp         | Run `npm run auth` locally, then copy from `tokens.json`                            |
 
-```
-🔄 Migrating database schema...
-⚠️  Found 1 existing bookmarks. Note: Migration will lose old bookmarks as they lack raindrop_metadata.
-Consider re-running the fetch to populate with complete Raindrop data.
-✅ Database migration completed
-```
+### Getting OAuth Tokens
 
-## Available Commands
+1. **Set up local environment** (steps 1-3 above)
+2. **Run authentication:**
+   ```bash
+   npm run auth
+   ```
+3. **Copy values from `tokens.json`:**
+   ```json
+   {
+     "access_token": "copy_this_to_RAINDROP_ACCESS_TOKEN",
+     "refresh_token": "copy_this_to_RAINDROP_REFRESH_TOKEN",
+     "expires_at": "copy_this_to_RAINDROP_EXPIRES_AT"
+   }
+   ```
 
-### Core Commands
+### Branch Strategy
 
-- `npm run auth` - Authenticate with Raindrop.io
-- `npm run fetch` - Fetch bookmarks from Raindrop.io
-- `npm run build` - Compile TypeScript to JavaScript
-- `npm test` - Run the test suite
+- **`main` branch**: Contains the application code
+- **`bookmarks-data` branch**: Contains the fetched bookmark JSON files
+- **Data files**: Each bookmark stored as `data/{bookmark_id}.json` (e.g., `data/123456789.json`)
 
-## Data Storage
+### Manual Trigger
 
-- Bookmarks are stored in `bookmarks.db` (SQLite database)
-- Authentication tokens are saved in `tokens.json`
-- Both files are created automatically on first run
+You can manually trigger the workflow from the GitHub Actions tab using the "Run workflow" button.
 
-### Database Schema
+## 📁 Data Storage
 
-The SQLite database stores bookmarks with this schema:
+### JSON File Format
 
-```sql
-CREATE TABLE bookmarks (
-  raindrop_id INTEGER PRIMARY KEY,
-  url TEXT NOT NULL UNIQUE,
-  title TEXT NOT NULL,
-  raindrop_metadata TEXT NOT NULL
-);
-```
+Each bookmark is saved as an individual JSON file using its ID as the filename:
 
-### Data Structures
+**File**: `data/123456789.json`
 
-#### Raindrop Link Object
 ```json
 {
   "_id": 123456789,
@@ -125,56 +113,119 @@ CREATE TABLE bookmarks (
   "created": "2024-01-15T10:30:00.000Z",
   "lastUpdate": "2024-01-15T10:30:00.000Z",
   "domain": "example.com",
+  "creatorRef": "test",
+  "sort": 0,
   "collectionId": 98765
 }
 ```
 
-#### Authentication Tokens
-```json
-{
-  "accessToken": "your_access_token_here",
-  "refreshToken": "your_refresh_token_here", 
-  "expiresAt": 1705123456789
-}
+### Incremental Fetching
+
+- **First run**: Fetches all bookmarks
+- **Subsequent runs**: Only fetches bookmarks updated since the last run
+- **Detection**: Uses `lastUpdate` timestamp from the most recent JSON file
+
+## 📊 Sample Output
+
+### Local Development
+
+```bash
+🔍 Fetching links updated since 2024-01-15T10:00:00Z...
+✅ Successfully fetched 5 updated links
+💾 Saving bookmarks to JSON files...
+💾 Saved 3 bookmarks as individual files
+⏭️ Skipped 2 unchanged bookmarks
+✅ Saved 3 new/updated bookmarks as individual files
 ```
 
-## Features
+### GitHub Actions
 
-- **Incremental Sync**: Only fetches bookmarks updated since last run
-- **Automatic Migration**: Database schema updates automatically
-- **Complete Metadata**: Preserves all Raindrop.io bookmark data
-- **Local Storage**: All data stored locally in SQLite
+```
+🚀 Starting bookmark fetch...
+🔍 Fetching all links from Raindrop.io (initial sync)...
+✅ Successfully fetched 150 links
+💾 Saving bookmarks to JSON files...
+💾 Saved 150 bookmarks as individual files
+✅ Saved 150 new/updated bookmarks as individual files
+📁 New bookmark data detected, committing...
+✅ Successfully committed and pushed new bookmark data
+```
 
-## Test Results
+## 🛠 Available Commands
+
+### Core Commands
+
+- `npm run auth` - Authenticate with Raindrop.io
+- `npm run fetch` - Fetch bookmarks from Raindrop.io
+- `npm run build` - Compile TypeScript to JavaScript
+- `npm test` - Run the test suite
+
+## 🧪 Testing
+
+```bash
+npm test
+```
+
+**Test Results:**
 
 ```
 Test Suites: 5 passed, 5 total
-Tests:       17 passed, 17 total
+Tests:       13 passed, 13 total
 Snapshots:   0 total
-Time:        2.271 s
+Time:        ~4 seconds
 ```
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 ### Authentication Issues
 
 - Verify your `.env` file has correct credentials
 - Check that your Raindrop.io app has the correct redirect URI
-- Ensure `tokens.json` exists and is valid
+- Ensure `tokens.json` exists and is valid after running `npm run auth`
 
-### Database Issues
+### GitHub Actions Issues
 
-- Delete `bookmarks.db` to start fresh
-- Run migration will automatically handle schema updates
-- Check file permissions if getting write errors
+- **"No new bookmark data to commit"**: Normal if no bookmarks were updated
+- **"Authentication failed"**: Check your GitHub Secrets are set correctly
+- **"Tokens refreshed"**: Update GitHub Secrets with new token values from logs
 
-## Project Structure
+### Local Development
+
+- Delete `tokens.json` to re-authenticate
+- Check file permissions if getting write errors to `data/` directory
+
+## 📁 Project Structure
 
 ```
-src/
-├── api/          # Raindrop.io API client
-├── auth/         # OAuth authentication
-├── storage/      # SQLite database operations
-├── types/        # TypeScript type definitions
-└── __tests__/    # Test files
+├── .github/workflows/    # GitHub Actions automation
+├── src/
+│   ├── api/             # Raindrop.io API client
+│   ├── auth/            # OAuth authentication
+│   ├── storage/         # JSON file operations
+│   ├── types/           # TypeScript type definitions
+│   └── __tests__/       # Test files
+├── data/                # Individual bookmark JSON files (on bookmarks-data branch)
+│   ├── 123456789.json   # Individual bookmark file (using Raindrop ID)
+│   ├── 987654321.json   # Another bookmark file
+│   └── ...              # One file per bookmark
+└── tokens.json          # OAuth tokens (local only, not committed)
 ```
+
+## 🎯 Features
+
+- **✅ Automated Fetching**: Runs every 6 hours via GitHub Actions
+- **✅ Incremental Sync**: Only fetches updated bookmarks
+- **✅ Version Control**: All data committed to Git with timestamps
+- **✅ JSON Storage**: Human-readable, easily parseable format
+- **✅ Branch Separation**: Keeps code and data organized
+- **✅ Manual Control**: Can trigger fetches manually
+- **✅ Local Development**: Full local testing support
+
+## 🚨 Important Notes
+
+1. **Individual Files**: Each bookmark is saved as a separate JSON file using its Raindrop ID as the filename
+2. **Smart Updates**: Only saves files when bookmarks have actually been updated (compares `lastUpdate` timestamps)
+3. **Token Refresh**: OAuth tokens expire and are automatically refreshed, but you may need to update GitHub Secrets periodically
+4. **Rate Limits**: Respects Raindrop.io API rate limits
+5. **Git History**: Individual files provide clean Git diffs showing exactly which bookmarks changed
+6. **Privacy**: Ensure your repository is private if your bookmarks contain sensitive information

@@ -15,7 +15,7 @@ describe("JSON Storage Functions", () => {
     }
   });
 
-  test("should save bookmarks to JSON file", async () => {
+  test("should save bookmarks as individual files", async () => {
     const bookmark: RaindropLink = {
       _id: 123,
       title: "Test Site",
@@ -42,9 +42,11 @@ describe("JSON Storage Functions", () => {
       TEST_DATA_DIR
     );
 
-    expect(result.count).toBe(1);
-    expect(result.filename).toMatch(/^bookmarks-.*\.json$/);
-    expect(fs.existsSync(path.join(TEST_DATA_DIR, result.filename))).toBe(true);
+    expect(result.saved).toBe(1);
+    expect(result.skipped).toBe(0);
+    expect(result.files).toHaveLength(1);
+    expect(result.files[0]).toBe("123.json");
+    expect(fs.existsSync(path.join(TEST_DATA_DIR, "123.json"))).toBe(true);
   });
 
   test("should get most recent update date", async () => {

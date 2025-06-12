@@ -479,36 +479,73 @@ function generateBookmarksFilename(): string {
   return `bookmarks-${timestamp}.json`;
 }
 
-// Save bookmarks to timestamped JSON file
+// Save individual bookmark files by ID
 export async function saveBookmarksToJson(
   bookmarks: { raindropLink: RaindropLink }[],
   dataDir: string = defaultDataDir
-): Promise<{ filename: string; count: number }> {
+): Promise<{ saved: number; skipped: number; files: string[] }> {
   await ensureDataDirectory(dataDir);
 
-  const filename = generateBookmarksFilename();
-  const filepath = join(dataDir, filename);
+  const savedFiles: string[] = [];
+  let saved = 0;
+  let skipped = 0;
 
-  const data = {
-    fetchedAt: new Date().toISOString(),
-    count: bookmarks.length,
-    bookmarks: bookmarks.map((b) => b.raindropLink),
-  };
+  for (const bookmark of bookmarks) {
+    const filename = `${bookmark.raindropLink._id}.json`;
+    const filepath = join(dataDir, filename);
 
+    try {
+      // Check if file already exists and compare lastUpdate
+      let shouldSave = true;
+
+      if (await fileExists(filepath)) {
+        const existingContent = await fs.readFile(filepath, "utf-8");
+        const existing = JSON.parse(existingContent);
+
+        // Only save if the bookmark has been updated
+        if (existing.lastUpdate === bookmark.raindropLink.lastUpdate) {
+          shouldSave = false;
+          skipped++;
+        }
+      }
+
+      if (shouldSave) {
+        await fs.writeFile(
+          filepath,
+          JSON.stringify(bookmark.raindropLink, null, 2)
+        );
+        savedFiles.push(filename);
+        saved++;
+      }
+    } catch (error) {
+      console.error(
+        `Error saving bookmark ${bookmark.raindropLink._id}:`,
+        error
+      );
+    }
+  }
+
+  if (saved > 0) {
+    console.log(`💾 Saved ${saved} bookmarks as individual files`);
+  }
+  if (skipped > 0) {
+    console.log(`⏭️ Skipped ${skipped} unchanged bookmarks`);
+  }
+
+  return { saved, skipped, files: savedFiles };
+}
+
+// Helper function to check if file exists
+async function fileExists(filepath: string): Promise<boolean> {
   try {
-    await fs.writeFile(filepath, JSON.stringify(data, null, 2));
-    // console.log(`💾 Saved ${bookmarks.length} bookmarks to ${filename}`);
-    return { filename, count: bookmarks.length };
-  } catch (error) {
-    throw new Error(
-      `Failed to save bookmarks to JSON: ${
-        error instanceof Error ? error.message : "Unknown error"
-      }`
-    );
+    await fs.access(filepath);
+    return true;
+  } catch {
+    return false;
   }
 }
 
-// Get most recent update from existing JSON files
+// Get most recent update from existing individual bookmark files
 export async function getMostRecentUpdateFromJson(
   dataDir: string = defaultDataDir
 ): Promise<string | null> {
@@ -516,39 +553,41 @@ export async function getMostRecentUpdateFromJson(
     await ensureDataDirectory(dataDir);
 
     const files = await fs.readdir(dataDir);
-    const bookmarkFiles = files
-      .filter((file) => file.startsWith("bookmarks-") && file.endsWith(".json"))
-      .sort()
-      .reverse(); // Most recent first
+    const bookmarkFiles = files.filter(
+      (file) => file.endsWith(".json") && /^\d+\.json$/.test(file)
+    ); // Only bookmark ID files
 
     if (bookmarkFiles.length === 0) {
       return null;
     }
 
-    // Read the most recent file to get the latest lastUpdate
-    const mostRecentFile = join(dataDir, bookmarkFiles[0]);
-    const content = await fs.readFile(mostRecentFile, "utf-8");
-    const data = JSON.parse(content);
+    let mostRecentUpdate: string | null = null;
 
-    if (data.bookmarks && data.bookmarks.length > 0) {
-      // Find the most recent lastUpdate among all bookmarks
-      const lastUpdates = data.bookmarks
-        .map((bookmark: RaindropLink) => bookmark.lastUpdate)
-        .filter((date: string) => date)
-        .sort()
-        .reverse();
+    // Read all bookmark files to find the most recent lastUpdate
+    for (const file of bookmarkFiles) {
+      try {
+        const filepath = join(dataDir, file);
+        const content = await fs.readFile(filepath, "utf-8");
+        const bookmark = JSON.parse(content) as RaindropLink;
 
-      return lastUpdates.length > 0 ? lastUpdates[0] : null;
+        if (bookmark.lastUpdate) {
+          if (!mostRecentUpdate || bookmark.lastUpdate > mostRecentUpdate) {
+            mostRecentUpdate = bookmark.lastUpdate;
+          }
+        }
+      } catch (error) {
+        console.warn(`Warning: Could not read bookmark file ${file}: ${error}`);
+      }
     }
 
-    return null;
+    return mostRecentUpdate;
   } catch (error) {
     console.warn(`Warning: Could not read existing bookmark files: ${error}`);
     return null;
   }
 }
 
-// List all bookmark JSON files
+// List all individual bookmark JSON files
 export async function listBookmarkFiles(
   dataDir: string = defaultDataDir
 ): Promise<string[]> {
@@ -557,30 +596,96 @@ export async function listBookmarkFiles(
 
     const files = await fs.readdir(dataDir);
     return files
-      .filter((file) => file.startsWith("bookmarks-") && file.endsWith(".json"))
-      .sort()
-      .reverse(); // Most recent first
+      .filter((file) => file.endsWith(".json") && /^\d+\.json$/.test(file)) // Only bookmark ID files
+      .sort((a, b) => {
+        const idA = parseInt(a.replace(".json", ""));
+        const idB = parseInt(b.replace(".json", ""));
+        return idB - idA; // Sort by ID descending
+      });
   } catch (error) {
     return [];
   }
 }
 
-// Load bookmarks from a specific JSON file
-export async function loadBookmarksFromJson(
-  filename: string,
+// Load a single bookmark by ID
+export async function loadBookmarkById(
+  bookmarkId: number,
   dataDir: string = defaultDataDir
-): Promise<RaindropLink[]> {
+): Promise<RaindropLink | null> {
+  const filename = `${bookmarkId}.json`;
   const filepath = join(dataDir, filename);
 
   try {
     const content = await fs.readFile(filepath, "utf-8");
-    const data = JSON.parse(content);
-    return data.bookmarks || [];
+    return JSON.parse(content) as RaindropLink;
   } catch (error) {
+    if ((error as any)?.code === "ENOENT") {
+      return null; // File doesn't exist
+    }
     throw new Error(
-      `Failed to load bookmarks from ${filename}: ${
+      `Failed to load bookmark ${bookmarkId}: ${
         error instanceof Error ? error.message : "Unknown error"
       }`
     );
+  }
+}
+
+// Load all bookmarks from individual JSON files
+export async function loadAllBookmarksFromJson(
+  dataDir: string = defaultDataDir
+): Promise<RaindropLink[]> {
+  try {
+    const files = await listBookmarkFiles(dataDir);
+    const bookmarks: RaindropLink[] = [];
+
+    for (const filename of files) {
+      try {
+        const filepath = join(dataDir, filename);
+        const content = await fs.readFile(filepath, "utf-8");
+        const bookmark = JSON.parse(content) as RaindropLink;
+        bookmarks.push(bookmark);
+      } catch (error) {
+        console.warn(
+          `Warning: Could not load bookmark file ${filename}: ${error}`
+        );
+      }
+    }
+
+    return bookmarks;
+  } catch (error) {
+    throw new Error(
+      `Failed to load bookmarks: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
+}
+
+// Legacy function for backwards compatibility - loads from specific file
+export async function loadBookmarksFromJson(
+  filename: string,
+  dataDir: string = defaultDataDir
+): Promise<RaindropLink[]> {
+  if (filename.match(/^\d+\.json$/)) {
+    // Individual bookmark file
+    const bookmark = await loadBookmarkById(
+      parseInt(filename.replace(".json", "")),
+      dataDir
+    );
+    return bookmark ? [bookmark] : [];
+  } else {
+    // Try to load as legacy batch file format
+    const filepath = join(dataDir, filename);
+    try {
+      const content = await fs.readFile(filepath, "utf-8");
+      const data = JSON.parse(content);
+      return data.bookmarks || [];
+    } catch (error) {
+      throw new Error(
+        `Failed to load bookmarks from ${filename}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    }
   }
 }

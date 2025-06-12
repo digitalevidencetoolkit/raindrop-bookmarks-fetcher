@@ -1,0 +1,127 @@
+name: Fetch Bookmarks
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  fetch-bookmarks:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        # Fetch full history to ensure we can switch branches
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Set up data branch
+      run: |
+        # Configure git
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Create or switch to data branch
+        if git show-ref --quiet refs/remotes/origin/bookmarks-data; then
+          echo "Switching to existing bookmarks-data branch"
+          git checkout bookmarks-data
+        else
+          echo "Creating new bookmarks-data branch"
+          git checkout -b bookmarks-data
+          # Create initial data directory
+          mkdir -p data
+          echo "# Bookmarks Data\n\nThis branch contains automatically fetched bookmark data from Raindrop.io.\n\nFiles are generated every 6 hours by GitHub Actions." > data/README.md
+          git add data/README.md
+          git commit -m "Initialize bookmarks data branch"
+          git push origin bookmarks-data
+        fi
+
+    - name: Create auth tokens file
+      run: |
+        # Create tokens.json from secrets if refresh token is provided
+        if [ ! -z "${{ secrets.RAINDROP_REFRESH_TOKEN }}" ]; then
+          cat > tokens.json << EOF
+        {
+          "access_token": "${{ secrets.RAINDROP_ACCESS_TOKEN }}",
+          "refresh_token": "${{ secrets.RAINDROP_REFRESH_TOKEN }}",
+          "expires_at": "${{ secrets.RAINDROP_EXPIRES_AT }}"
+        }
+        EOF
+        else
+          echo "Warning: No refresh token provided. Manual authentication may be required."
+          exit 1
+        fi
+
+    - name: Fetch bookmarks
+      env:
+        RAINDROP_CLIENT_ID: ${{ secrets.RAINDROP_CLIENT_ID }}
+        RAINDROP_CLIENT_SECRET: ${{ secrets.RAINDROP_CLIENT_SECRET }}
+        RAINDROP_REDIRECT_URI: "http://localhost:3000/callback"
+      run: |
+        echo "🚀 Starting bookmark fetch..."
+        npm run fetch
+
+    - name: Commit and push new data
+      run: |
+        # Check if there are changes to commit
+        if [ -n "$(git status --porcelain data/)" ]; then
+          echo "📁 Bookmark data changes detected, committing..."
+          
+          # Add all JSON files in data directory (new and modified)
+          git add data/
+          
+          # Count changes
+          ADDED_FILES=$(git diff --cached --name-status | grep "^A" | wc -l)
+          MODIFIED_FILES=$(git diff --cached --name-status | grep "^M" | wc -l)
+          TIMESTAMP=$(date -u +"%Y-%m-%d %H:%M UTC")
+          
+          # Create commit message with details
+          COMMIT_MSG="📊 Fetch bookmarks - $TIMESTAMP"
+          if [ $ADDED_FILES -gt 0 ]; then
+            COMMIT_MSG="$COMMIT_MSG
+          - Added $ADDED_FILES new bookmark(s)"
+          fi
+          if [ $MODIFIED_FILES -gt 0 ]; then
+            COMMIT_MSG="$COMMIT_MSG
+          - Updated $MODIFIED_FILES existing bookmark(s)"
+          fi
+          COMMIT_MSG="$COMMIT_MSG
+          - Automated fetch from GitHub Actions
+          
+          🤖 Generated with [GitHub Actions](https://github.com/${{ github.repository }}/actions)"
+          
+          git commit -m "$COMMIT_MSG"
+          
+          # Push to bookmarks-data branch
+          git push origin bookmarks-data
+          
+          echo "✅ Successfully committed and pushed bookmark data changes"
+        else
+          echo "ℹ️ No bookmark data changes to commit"
+        fi
+
+    - name: Update tokens if refreshed
+      if: always()
+      run: |
+        # If tokens.json was updated during fetch, we should update the secrets
+        # Note: This would require additional setup with a personal access token
+        # For now, just log if tokens were refreshed
+        if [ -f tokens.json ]; then
+          echo "ℹ️ Tokens file exists. Check logs for any refresh messages."
+          echo "⚠️ If tokens were refreshed, you may need to manually update GitHub Secrets"
+        fi

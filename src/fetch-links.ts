@@ -70,13 +70,15 @@ async function fetchLinks() {
       raindropLink: link,
     }));
 
-    // Save all bookmarks to a new timestamped JSON file
+    // Save bookmarks as individual JSON files
     const saveResult = await saveBookmarksToJson(bookmarks);
 
-    const newCount = saveResult.count;
-    const skippedCount = 0; // In JSON approach, we save all fetched bookmarks to new files
+    const newCount = saveResult.saved;
+    const skippedCount = saveResult.skipped;
 
-    console.log(`✅ Added ${newCount} new bookmarks to ${saveResult.filename}`);
+    console.log(
+      `✅ Saved ${newCount} new/updated bookmarks as individual files`
+    );
     if (skippedCount > 0) {
       console.log(`⏭️  Skipped ${skippedCount} existing bookmarks`);
     }
