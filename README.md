@@ -40,7 +40,24 @@ npm run fetch
 
 ## 🤖 Automated GitHub Actions Setup
 
-This project includes a GitHub Actions workflow that automatically fetches bookmarks every 6 hours and commits them to a separate `bookmarks-data` branch.
+This project includes a GitHub Actions workflow that automatically fetches bookmarks and commits them to a separate `bookmarks-data` branch.
+
+### Enabling Automatic Scheduling
+
+By default, the workflow only runs manually. To enable automatic fetching every 6 hours:
+
+1. **Edit `.github/workflows/fetch-bookmarks.yml`**
+2. **Uncomment the schedule section:**
+   ```yaml
+   on:
+     schedule:
+       # Run every 6 hours
+       - cron: "0 */6 * * *"
+     workflow_dispatch: # Allow manual triggering
+   ```
+3. **Commit and push the changes**
+
+⚠️ **Important**: Only enable the schedule after you've set up all the required GitHub Secrets (see below).
 
 ### Required GitHub Secrets
 
@@ -67,9 +84,9 @@ To enable automated fetching, you must configure these secrets in your GitHub re
 3. **Copy values from `tokens.json`:**
    ```json
    {
-     "access_token": "copy_this_to_RAINDROP_ACCESS_TOKEN",
-     "refresh_token": "copy_this_to_RAINDROP_REFRESH_TOKEN",
-     "expires_at": "copy_this_to_RAINDROP_EXPIRES_AT"
+     "accessToken": "copy_this_to_RAINDROP_ACCESS_TOKEN",
+     "refreshToken": "copy_this_to_RAINDROP_REFRESH_TOKEN",
+     "expiresAt": "copy_this_to_RAINDROP_EXPIRES_AT"
    }
    ```
 
@@ -150,82 +167,3 @@ Each bookmark is saved as an individual JSON file using its ID as the filename:
 📁 New bookmark data detected, committing...
 ✅ Successfully committed and pushed new bookmark data
 ```
-
-## 🛠 Available Commands
-
-### Core Commands
-
-- `npm run auth` - Authenticate with Raindrop.io
-- `npm run fetch` - Fetch bookmarks from Raindrop.io
-- `npm run build` - Compile TypeScript to JavaScript
-- `npm test` - Run the test suite
-
-## 🧪 Testing
-
-```bash
-npm test
-```
-
-**Test Results:**
-
-```
-Test Suites: 5 passed, 5 total
-Tests:       13 passed, 13 total
-Snapshots:   0 total
-Time:        ~4 seconds
-```
-
-## 🔧 Troubleshooting
-
-### Authentication Issues
-
-- Verify your `.env` file has correct credentials
-- Check that your Raindrop.io app has the correct redirect URI
-- Ensure `tokens.json` exists and is valid after running `npm run auth`
-
-### GitHub Actions Issues
-
-- **"No new bookmark data to commit"**: Normal if no bookmarks were updated
-- **"Authentication failed"**: Check your GitHub Secrets are set correctly
-- **"Tokens refreshed"**: Update GitHub Secrets with new token values from logs
-
-### Local Development
-
-- Delete `tokens.json` to re-authenticate
-- Check file permissions if getting write errors to `data/` directory
-
-## 📁 Project Structure
-
-```
-├── .github/workflows/    # GitHub Actions automation
-├── src/
-│   ├── api/             # Raindrop.io API client
-│   ├── auth/            # OAuth authentication
-│   ├── storage/         # JSON file operations
-│   ├── types/           # TypeScript type definitions
-│   └── __tests__/       # Test files
-├── data/                # Individual bookmark JSON files (on bookmarks-data branch)
-│   ├── 123456789.json   # Individual bookmark file (using Raindrop ID)
-│   ├── 987654321.json   # Another bookmark file
-│   └── ...              # One file per bookmark
-└── tokens.json          # OAuth tokens (local only, not committed)
-```
-
-## 🎯 Features
-
-- **✅ Automated Fetching**: Runs every 6 hours via GitHub Actions
-- **✅ Incremental Sync**: Only fetches updated bookmarks
-- **✅ Version Control**: All data committed to Git with timestamps
-- **✅ JSON Storage**: Human-readable, easily parseable format
-- **✅ Branch Separation**: Keeps code and data organized
-- **✅ Manual Control**: Can trigger fetches manually
-- **✅ Local Development**: Full local testing support
-
-## 🚨 Important Notes
-
-1. **Individual Files**: Each bookmark is saved as a separate JSON file using its Raindrop ID as the filename
-2. **Smart Updates**: Only saves files when bookmarks have actually been updated (compares `lastUpdate` timestamps)
-3. **Token Refresh**: OAuth tokens expire and are automatically refreshed, but you may need to update GitHub Secrets periodically
-4. **Rate Limits**: Respects Raindrop.io API rate limits
-5. **Git History**: Individual files provide clean Git diffs showing exactly which bookmarks changed
-6. **Privacy**: Ensure your repository is private if your bookmarks contain sensitive information
