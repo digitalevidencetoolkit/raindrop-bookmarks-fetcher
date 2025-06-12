@@ -3,9 +3,8 @@ import { getAllLinks } from "./api/client";
 import {
   loadTokens,
   saveTokens,
-  initializeBookmarkDb,
-  saveBookmarksBatch,
-  getMostRecentUpdate,
+  saveBookmarksToJson,
+  getMostRecentUpdateFromJson,
 } from "./storage/storage";
 import { RaindropCredentials } from "./types/auth";
 
@@ -30,19 +29,22 @@ async function fetchLinks() {
       process.exit(1);
     }
 
-    // Initialize database
-    await initializeBookmarkDb();
+    // JSON files will be created automatically when needed
 
-    // Check for incremental fetch
-    const lastUpdate = await getMostRecentUpdate();
-    
+    // Check for incremental fetch from JSON files
+    const lastUpdate = await getMostRecentUpdateFromJson();
+
     if (lastUpdate) {
       console.log(`🔍 Fetching links updated since ${lastUpdate}...`);
     } else {
       console.log("🔍 Fetching all links from Raindrop.io (initial sync)...");
     }
 
-    const result = await getAllLinks(credentials, tokens, lastUpdate || undefined);
+    const result = await getAllLinks(
+      credentials,
+      tokens,
+      lastUpdate || undefined
+    );
 
     if (result.updatedTokens) {
       console.log("🔄 Refreshed auth tokens");
@@ -53,55 +55,28 @@ async function fetchLinks() {
       console.log("✅ No new or updated links found");
       return result;
     }
-    
-    console.log(`✅ Successfully fetched ${result.links.length} ${lastUpdate ? 'updated' : ''} links`);
 
-    // Save bookmarks to database
-    console.log("💾 Saving bookmarks to database...");
+    console.log(
+      `✅ Successfully fetched ${result.links.length} ${
+        lastUpdate ? "updated" : ""
+      } links`
+    );
+
+    // Save bookmarks to JSON files
+    console.log("💾 Saving bookmarks to JSON files...");
 
     // Convert all links to bookmark format
     const bookmarks = result.links.map((link) => ({
       raindropLink: link,
     }));
 
-    // Process in smaller batches to avoid overwhelming the database
-    const batchSize = 10;
-    let totalSaved = 0;
-    let totalSkipped = 0;
+    // Save all bookmarks to a new timestamped JSON file
+    const saveResult = await saveBookmarksToJson(bookmarks);
 
-    for (let i = 0; i < bookmarks.length; i += batchSize) {
-      const batch = bookmarks.slice(i, i + batchSize);
-      console.log(
-        `Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(
-          bookmarks.length / batchSize
-        )} (${batch.length} items)...`
-      );
+    const newCount = saveResult.count;
+    const skippedCount = 0; // In JSON approach, we save all fetched bookmarks to new files
 
-      try {
-        const result = await saveBookmarksBatch(batch);
-        totalSaved += result.saved;
-        totalSkipped += result.skipped;
-
-        console.log(
-          `  ✅ Saved ${result.saved}, skipped ${result.skipped} duplicates`
-        );
-      } catch (error) {
-        console.error(
-          `❌ Error processing batch:`,
-          error instanceof Error ? error.message : error
-        );
-      }
-
-      // Add a longer delay between batches
-      if (i + batchSize < bookmarks.length) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-    }
-
-    const newCount = totalSaved;
-    const skippedCount = totalSkipped;
-
-    console.log(`✅ Added ${newCount} new bookmarks to database`);
+    console.log(`✅ Added ${newCount} new bookmarks to ${saveResult.filename}`);
     if (skippedCount > 0) {
       console.log(`⏭️  Skipped ${skippedCount} existing bookmarks`);
     }
