@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import { join } from "path";
-import { AuthTokens } from "../types/auth";
+import { AuthTokens, RaindropAccount, MultiAccountConfig } from "../types/auth";
 import { RaindropLink } from "../types/raindrop";
 // import * as sqlite3 from "sqlite3";
 
@@ -479,9 +479,43 @@ function generateBookmarksFilename(): string {
   return `bookmarks-${timestamp}.json`;
 }
 
-// Save individual bookmark files by ID
+// Multi-account configuration functions
+export async function loadMultiAccountConfig(): Promise<MultiAccountConfig | null> {
+  const configJson = process.env.RAINDROP_ACCOUNTS_JSON;
+  console.log(`🔍 RAINDROP_ACCOUNTS_JSON exists: ${!!configJson}`);
+  if (configJson) {
+    console.log(`🔍 RAINDROP_ACCOUNTS_JSON length: ${configJson.length}`);
+    console.log(`🔍 RAINDROP_ACCOUNTS_JSON raw value: ${JSON.stringify(configJson)}`);
+  }
+
+  if (!configJson) {
+    console.log("📋 No RAINDROP_ACCOUNTS_JSON found, falling back to single account mode");
+    return null;
+  }
+
+  try {
+    const accounts = JSON.parse(configJson) as RaindropAccount[];
+    console.log(`🔍 Parsed ${accounts.length} accounts from config`);
+    if (accounts.length > 0) {
+      console.log(`🔍 First account ID: ${accounts[0].id}`);
+    }
+    return { accounts };
+  } catch (error) {
+    console.error("❌ Failed to parse RAINDROP_ACCOUNTS_JSON as JSON:");
+    console.error("Error:", error instanceof Error ? error.message : error);
+    console.error("This means your GitHub secret contains invalid JSON");
+    console.log("📋 Falling back to single account mode due to JSON parse error");
+    return null;
+  }
+}
+
+export function getAccountDataDir(accountId: string, baseDir: string = defaultDataDir): string {
+  return join(baseDir, accountId);
+}
+
+// Save individual bookmark files by ID with account support (flat structure)
 export async function saveBookmarksToJson(
-  bookmarks: { raindropLink: RaindropLink }[],
+  bookmarks: { raindropLink: RaindropLink; accountId?: string }[],
   dataDir: string = defaultDataDir
 ): Promise<{ saved: number; skipped: number; files: string[] }> {
   await ensureDataDirectory(dataDir);
@@ -510,9 +544,14 @@ export async function saveBookmarksToJson(
       }
 
       if (shouldSave) {
+        // Add accountId to bookmark data if provided
+        const bookmarkData = bookmark.accountId
+          ? { ...bookmark.raindropLink, accountId: bookmark.accountId }
+          : bookmark.raindropLink;
+
         await fs.writeFile(
           filepath,
-          JSON.stringify(bookmark.raindropLink, null, 2)
+          JSON.stringify(bookmarkData, null, 2)
         );
         savedFiles.push(filename);
         saved++;
@@ -547,7 +586,8 @@ async function fileExists(filepath: string): Promise<boolean> {
 
 // Get most recent update from existing individual bookmark files
 export async function getMostRecentUpdateFromJson(
-  dataDir: string = defaultDataDir
+  dataDir: string = defaultDataDir,
+  accountId?: string
 ): Promise<string | null> {
   try {
     await ensureDataDirectory(dataDir);
@@ -564,11 +604,17 @@ export async function getMostRecentUpdateFromJson(
     let mostRecentUpdate: string | null = null;
 
     // Read all bookmark files to find the most recent lastUpdate
+    // If accountId is specified, only consider bookmarks from that account
     for (const file of bookmarkFiles) {
       try {
         const filepath = join(dataDir, file);
         const content = await fs.readFile(filepath, "utf-8");
-        const bookmark = JSON.parse(content) as RaindropLink;
+        const bookmark = JSON.parse(content) as RaindropLink & { accountId?: string };
+
+        // Filter by accountId if specified
+        if (accountId && bookmark.accountId !== accountId) {
+          continue;
+        }
 
         if (bookmark.lastUpdate) {
           if (!mostRecentUpdate || bookmark.lastUpdate > mostRecentUpdate) {
@@ -577,6 +623,33 @@ export async function getMostRecentUpdateFromJson(
         }
       } catch (error) {
         console.warn(`Warning: Could not read bookmark file ${file}: ${error}`);
+      }
+    }
+
+    return mostRecentUpdate;
+  } catch (error) {
+    console.warn(`Warning: Could not read existing bookmark files: ${error}`);
+    return null;
+  }
+}
+
+// Get most recent update across all accounts
+export async function getMostRecentUpdateFromAllAccounts(
+  dataDir: string = defaultDataDir
+): Promise<string | null> {
+  try {
+    const config = await loadMultiAccountConfig();
+    if (!config) {
+      // Fall back to single account
+      return getMostRecentUpdateFromJson(dataDir);
+    }
+
+    let mostRecentUpdate: string | null = null;
+
+    for (const account of config.accounts) {
+      const accountUpdate = await getMostRecentUpdateFromJson(dataDir, account.id);
+      if (accountUpdate && (!mostRecentUpdate || accountUpdate > mostRecentUpdate)) {
+        mostRecentUpdate = accountUpdate;
       }
     }
 

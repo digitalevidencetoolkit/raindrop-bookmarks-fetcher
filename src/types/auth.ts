@@ -21,3 +21,16 @@ export interface TokenResponse {
   expires_in: number;
   token_type: string;
 }
+
+export interface RaindropAccount {
+  id: string;
+  clientId: string;
+  clientSecret: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export interface MultiAccountConfig {
+  accounts: RaindropAccount[];
+}

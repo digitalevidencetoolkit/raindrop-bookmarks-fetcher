@@ -2,7 +2,6 @@
   "name": "raindrop-fetcher",
   "version": "1.0.0",
   "description": "Scheduled app to fetch URLs from Raindrop.io",
-  "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "fetch": "ts-node src/fetch-links.ts",
